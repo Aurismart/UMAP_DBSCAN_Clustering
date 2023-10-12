@@ -15,7 +15,7 @@ import datetime
 已將WINDOWS硬碟掛載到/mnt,
 因此/mnt/d 這個路徑對應到 windows的 D:/
 '''
-PATH = '/mnt/d/umap_data/231003_UMAP_3F_Transition'
+PATH = '/mnt/d/umap_data/231006_UMAP_W1719_wav'
 
 
 def log_transform_and_normalize(x):
@@ -87,12 +87,12 @@ np.arange(0.5,1.2,0.1) 等價於 [0.5,0.6,0.7,0.8,0.9,1.0,1.1]
 
 若步長為浮點數則需要使用np.arange
 '''
-# n_neighbors_range = range(4,12)
-# spread_range = np.arange(1.0,1.6,0.5)
-# eps_range = np.arange(0.5,1.2,0.1)
-n_neighbors_range = [7]
-spread_range = [1.5]
-# eps_range = [0.8]
+n_neighbors_range = range(4,12,1)
+spread_range = np.arange(3.0,5.1,0.5)
+min_dist_range = np.arange(0.1,1.0,0.1)
+# n_neighbors_range = [11]
+# spread_range = [3.5]
+# min_dist_range = [0.2]
 
 '''
 產生圖框
@@ -115,117 +115,118 @@ with tqdm(total=total_iterations, desc="Overall progress") as pbar:
     使用迴圈進行多組參數進行UMAP訓練
     '''
     for n_neighbors in n_neighbors_range:
-        # for min_d in min_dist_range:
-        for spread in spread_range:
-            
-            # for eps in eps_range:
-            # print("umap training start!")
-
-            '''
-            UMAP有哪些參數可以設定需要參照NVIDIA RAPIDS cuml文件
-            文件網址: https://docs.rapids.ai/api/cuml/stable/api/
-            
-            fit:只進行訓練umap model
-            fit_transform:進行訓練之後,將訓練資料降維的結果回傳
-            transform:使用現在的模型參數將資料降維回傳
-            '''
-            umap_model = cuml.UMAP(n_neighbors=n_neighbors,spread = spread, init="spectral")
-            embedding = umap_model.fit_transform(mels_2d)
-            # print("umap training done!")
-
-            # print("DBSCAN training start!")
-            # db = DBSCAN(eps=eps, min_samples=75)
-            # labels = db.fit_predict(embedding)
-
-            '''
-            使用HDNSCAN進行分群,參數設定一樣參照上述NVIDIA RAPIDS cuml文件
-            fit:只進行訓練hdbscan model
-            fit_predict:進行訓練之後,將訓練資料分群的結果回傳
-            '''
-            hdbscan = HDBSCAN(min_cluster_size=1000,min_samples = 1000)
-            labels = hdbscan.fit_predict(embedding)
-
-            # print("DBSCAN training done!")
-            
-
-            '''
-            將座標點根據labels(HDBSCAN產生的結果)標在圖片上
-            '''
-            scatter = plt.scatter(embedding[:, 0], embedding[:, 1], c=labels, cmap='viridis')
-            
-
-            '''
-            選0.01比例的資料,將這些資料標上時間
-            '''
-            num_to_label = int(0.01* len(fn_order))
-            selected_indices = np.random.choice(len(fn_order), num_to_label, replace=False)
-            for i in selected_indices:
+        for min_d in min_dist_range:
+            for spread in spread_range:
                 
+                # for eps in eps_range:
+                # print("umap training start!")
+
                 '''
-                從檔名中取出時間
-                '''
-                text = fn_order[i][fn_order[i].index("_")+1:fn_order[i].rindex("_")]
-                text = text[0:5]
+                UMAP有哪些參數可以設定需要參照NVIDIA RAPIDS cuml文件
+                文件網址: https://docs.rapids.ai/api/cuml/stable/api/
                 
+                fit:只進行訓練umap model
+                fit_transform:進行訓練之後,將訓練資料降維的結果回傳
+                transform:使用現在的模型參數將資料降維回傳
                 '''
-                把文字按點標上去
+                umap_model = cuml.UMAP(n_neighbors=n_neighbors,spread = spread,min_dist=min_d)
+                embedding = umap_model.fit_transform(mels_2d)
+                # print("umap training done!")
+
+                # print("DBSCAN training start!")
+                # db = DBSCAN(eps=eps, min_samples=75)
+                # labels = db.fit_predict(embedding)
+
                 '''
-                plt.annotate(text, (embedding[i, 0], embedding[i, 1]))
+                使用HDNSCAN進行分群,參數設定一樣參照上述NVIDIA RAPIDS cuml文件
+                fit:只進行訓練hdbscan model
+                fit_predict:進行訓練之後,將訓練資料分群的結果回傳
+                '''
+                hdbscan = HDBSCAN(min_cluster_size=30)
+                labels = hdbscan.fit_predict(embedding)
+
+                # print("DBSCAN training done!")
+
+                
+
+                '''
+                將座標點根據labels(HDBSCAN產生的結果)標在圖片上
+                '''
+                scatter = plt.scatter(embedding[:, 0], embedding[:, 1], c=labels, cmap='viridis')
+                
+
+                '''
+                選0.01比例的資料,將這些資料標上時間
+                '''
+                num_to_label = int(0.01* len(fn_order))
+                selected_indices = np.random.choice(len(fn_order), num_to_label, replace=False)
+                for i in selected_indices:
+                    
+                    '''
+                    從檔名中取出時間
+                    '''
+                    text = fn_order[i][fn_order[i].index("_")+1:fn_order[i].rindex("_")]
+                    text = text[0:5]
+                    
+                    '''
+                    把文字按點標上去
+                    '''
+                    plt.annotate(text, (embedding[i, 0], embedding[i, 1]))
 
 
-            '''
-            用現在的時間產生字串,再使用這個字串產生資料夾避免檔案被覆寫
-            '''
-            now = datetime.datetime.now()
-            formatted_date  = now.strftime('%m%d_%H')
-            save_root = '/mnt/c/Users/znhea/OneDrive/桌面/Umap'
-            save_root = os.path.join(save_root,formatted_date)
-            
-            '''
-            若沒有目標路徑則創建資料夾
-            '''
-            if not os.path.isdir(save_root):
-                os.mkdir(save_root)
-
-
-            '''
-            幫圖片上標題,存檔,後把記憶體的圖片內容清除
-            '''
-            plt.title('UMAP/HDBSCAN Clustering')
-            plt.savefig(os.path.join(save_root,f"UMAP_DBSCAN_Clustering_n_neighbors{n_neighbors}_spread{spread}.png"))
-            plt.cla()
-            
-
-            '''
-            根據分群的結果將音檔複製到指定路徑,調參時把下面的迴圈註解,直到調到一個滿意的參數才啟動
-            '''
-            for i in tqdm(range(len(labels))):
+                '''
+                用現在的時間產生字串,再使用這個字串產生資料夾避免檔案被覆寫
+                '''
+                now = datetime.datetime.now()
+                formatted_date  = now.strftime('%m%d_%H')
+                save_root = '/mnt/c/Users/znhea/OneDrive/桌面/Umap'
+                save_root = os.path.join(save_root,formatted_date)
+                
                 '''
                 若沒有目標路徑則創建資料夾
                 '''
                 if not os.path.isdir(save_root):
                     os.mkdir(save_root)
 
-                '''
-                HDBSCAN將雜音分到-1
-                '''
-                if labels[i] == -1:
-                    target_root = os.path.join(save_root,"noise")
-                else:
-                    target_root = os.path.join(save_root,str(labels[i]))
 
                 '''
-                若沒有目標路徑則創建資料夾
+                幫圖片上標題,存檔,後把記憶體的圖片內容清除
                 '''
-                if not os.path.isdir(target_root):
-                    os.mkdir(target_root)
+                plt.title('UMAP/HDBSCAN Clustering')
+                plt.savefig(os.path.join(save_root,f"UMAP_HDBSCAN_Clustering_n_neighbors{n_neighbors}_spread{spread}_mindist{min_d}.png"))
+                plt.cla()
+                
 
                 '''
-                複製檔案
+                根據分群的結果將音檔複製到指定路徑,調參時把下面的迴圈註解,直到調到一個滿意的參數才啟動
                 '''
-                shutil.copy2(os.path.join(PATH,fn_order[i]),os.path.join(target_root,fn_order[i]))
+                # for i in tqdm(range(len(labels))):
+                #     '''
+                #     若沒有目標路徑則創建資料夾
+                #     '''
+                #     if not os.path.isdir(save_root):
+                #         os.mkdir(save_root)
 
-            '''
-            更新進度條
-            '''
-            pbar.update(1)
+                #     '''
+                #     HDBSCAN將雜音分到-1
+                #     '''
+                #     if labels[i] == -1:
+                #         target_root = os.path.join(save_root,"noise")
+                #     else:
+                #         target_root = os.path.join(save_root,str(labels[i]))
+
+                #     '''
+                #     若沒有目標路徑則創建資料夾
+                #     '''
+                #     if not os.path.isdir(target_root):
+                #         os.mkdir(target_root)
+
+                #     '''
+                #     複製檔案
+                #     '''
+                #     shutil.copy2(os.path.join(PATH,fn_order[i]),os.path.join(target_root,fn_order[i]))
+
+                '''
+                更新進度條
+                '''
+                pbar.update(1)
